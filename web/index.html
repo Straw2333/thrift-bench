@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thrift 性能测试工具</title>
+    <link rel="stylesheet" href="/pico.min.css">
+    <style>
+        :root {
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+            --green: #2e7d32;
+            --yellow: #f9a825;
+            --red: #c62828;
+        }
+
+        body { padding: 1.5rem 2rem; background: var(--pico-background-color); }
+
+        /* ===== Stepper ===== */
+        .stepper {
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 2rem; gap: 0;
+        }
+        .stepper-step {
+            display: flex; align-items: center; gap: 0.5rem;
+            color: var(--pico-muted-color); font-size: 0.9rem; font-weight: 500;
+            transition: color 0.3s;
+        }
+        .stepper-step.active { color: var(--pico-primary); font-weight: 700; }
+        .stepper-step.done { color: var(--pico-ins-color); }
+        .stepper-circle {
+            width: 30px; height: 30px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.85rem; font-weight: 700;
+            border: 2px solid var(--pico-muted-color); color: var(--pico-muted-color);
+            transition: all 0.3s;
+        }
+        .stepper-step.active .stepper-circle {
+            border-color: var(--pico-primary); color: #fff;
+            background: var(--pico-primary);
+        }
+        .stepper-step.done .stepper-circle {
+            border-color: var(--pico-ins-color); color: #fff;
+            background: var(--pico-ins-color);
+        }
+        .stepper-line {
+            flex: 0 0 40px; height: 2px; margin: 0 0.5rem;
+            background: var(--pico-muted-border-color); transition: background 0.3s;
+        }
+        .stepper-line.done { background: var(--pico-ins-color); }
+
+        /* ===== Step cards ===== */
+        .step {
+            margin-bottom: 1.5rem; padding: 1.5rem;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 0.75rem;
+            background: var(--pico-card-background-color, #fff);
+            box-shadow: var(--shadow-sm);
+            transition: box-shadow 0.2s;
+        }
+        .step:hover { box-shadow: var(--shadow-md); }
+        .step h3 { margin-top: 0; color: var(--pico-primary); }
+        .hidden { display: none; }
+
+        /* ===== Drag-drop upload ===== */
+        .drop-zone {
+            border: 2px dashed var(--pico-muted-border-color);
+            border-radius: 0.75rem; padding: 2rem; text-align: center;
+            transition: all 0.2s; cursor: pointer;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--pico-primary);
+            background: rgba(var(--pico-primary-rgb, 16,149,186), 0.05);
+        }
+        .drop-zone input[type="file"] { display: none; }
+        .drop-zone-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+        /* ===== Inline group ===== */
+        .inline-group {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+        }
+
+        /* ===== JSON editor toolbar ===== */
+        .json-toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .json-toolbar button { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
+        .json-error {
+            color: var(--pico-del-color); font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        textarea.json-invalid { border-color: var(--pico-del-color) !important; }
+
+        /* ===== Core metrics ===== */
+        .core-metrics {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 1rem; margin-bottom: 1.5rem;
+        }
+        .metric-card {
+            text-align: center; padding: 1.25rem 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--pico-muted-border-color);
+            background: var(--pico-card-background-color, #fff);
+        }
+        .metric-value {
+            font-size: 2rem; font-weight: 800; line-height: 1.2;
+            transition: color 0.3s;
+        }
+        .metric-label {
+            font-size: 0.85rem; color: var(--pico-muted-color);
+            margin-top: 0.25rem;
+        }
+        .metric-card.qps .metric-value { color: var(--pico-primary); }
+        .metric-card.latency .metric-value { color: #e65100; }
+        .metric-card.rate .metric-value { color: var(--green); }
+
+        /* ===== Success rate ring ===== */
+        .rate-ring {
+            width: 52px; height: 52px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: 700; color: #fff;
+            margin: 0 auto 0.25rem;
+        }
+
+        /* ===== Latency bar chart ===== */
+        .latency-chart { margin: 1rem 0; }
+        .latency-bar-row {
+            display: flex; align-items: center; gap: 0.75rem;
+            margin-bottom: 0.5rem; font-size: 0.85rem;
+        }
+        .latency-bar-label { width: 50px; text-align: right; font-weight: 600; }
+        .latency-bar-track {
+            flex: 1; height: 20px; background: var(--pico-muted-border-color);
+            border-radius: 4px; overflow: hidden;
+        }
+        .latency-bar-fill {
+            height: 100%; border-radius: 4px;
+            transition: width 0.6s ease;
+        }
+        .latency-bar-val { width: 70px; font-variant-numeric: tabular-nums; }
+
+        /* ===== Config summary ===== */
+        .config-summary {
+            font-size: 0.85rem; color: var(--pico-muted-color);
+            margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem;
+        }
+        .config-summary span { display: inline-flex; align-items: center; gap: 0.25rem; }
+
+        /* ===== Animated numbers ===== */
+        .animated-num {
+            display: inline-block;
+            transition: transform 0.15s ease-out;
+        }
+        .animated-num.bump { transform: scale(1.08); }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+            padding: 0.75rem 1.5rem; border-radius: 0.5rem;
+            background: #333; color: #fff; font-size: 0.9rem;
+            box-shadow: var(--shadow-md); z-index: 2000;
+            animation: toast-in 0.3s ease, toast-out 0.3s ease 1.7s forwards;
+        }
+        @keyframes toast-in { from { opacity:0; transform: translateX(-50%) translateY(10px); } }
+        @keyframes toast-out { to { opacity:0; transform: translateX(-50%) translateY(-10px); } }
+
+        /* ===== Report table ===== */
+        .report-table { width: 100%; margin-top: 1rem; }
+        .report-table td:first-child { font-weight: bold; width: 40%; }
+
+        /* ===== Call log rows ===== */
+        .success { color: var(--pico-ins-color); }
+        .error { color: var(--pico-del-color); }
+        .success-row { background: rgba(46,125,50,0.04); }
+        .error-row { background: rgba(198,40,40,0.04); }
+        .log-result {
+            max-width: 300px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; cursor: pointer;
+        }
+        .log-result.is-error { color: var(--pico-del-color); font-weight: 500; }
+
+        /* ===== Modal ===== */
+        .modal-overlay {
+            position: fixed; top:0; left:0; right:0; bottom:0;
+            background: rgba(0,0,0,0.6); display: flex;
+            align-items: center; justify-content: center; z-index: 1000;
+        }
+        .modal-content {
+            background: var(--pico-background-color); border-radius: 0.5rem;
+            max-width: 800px; width: 90%; max-height: 90vh; overflow: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1.5rem; border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+        .modal-header h3 { margin: 0; }
+        .close-btn {
+            background: none; border: none; font-size: 2rem; cursor: pointer;
+            color: var(--pico-muted-color); padding: 0; line-height: 1;
+        }
+        .close-btn:hover { color: var(--pico-color); }
+        .modal-body { padding: 1.5rem; }
+        .detail-table { width: 100%; margin-bottom: 1.5rem; }
+        .detail-table td.label { width: 30%; font-weight: bold; }
+        .result-section label { display: block; font-weight: bold; margin-bottom: 0.5rem; }
+        .result-textarea {
+            width: 100%; font-family: 'Courier New', monospace;
+            font-size: 0.85rem; resize: vertical;
+        }
+        .modal-footer {
+            padding: 1rem 1.5rem; border-top: 1px solid var(--pico-muted-border-color);
+            display: flex; gap: 0.5rem; justify-content: flex-end;
+        }
+
+        textarea { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+<main class="container">
+    <h1>Thrift 性能测试工具</h1>
+    <p>简单易用的 Thrift 接口性能测试工具，支持多协议、高并发测试</p>
+
+    <div id="app">
+        <!-- Stepper Navigation -->
+        <nav class="stepper">
+            <div class="stepper-step" :class="{ active: currentStep===1, done: currentStep>1 }">
+                <span class="stepper-circle">{{ currentStep>1 ? '✓' : '1' }}</span>
+                上传 IDL
+            </div>
+            <div class="stepper-line" :class="{ done: currentStep>1 }"></div>
+            <div class="stepper-step" :class="{ active: currentStep===2, done: currentStep>2 }">
+                <span class="stepper-circle">{{ currentStep>2 ? '✓' : '2' }}</span>
+                选择接口
+            </div>
+            <div class="stepper-line" :class="{ done: currentStep>2 }"></div>
+            <div class="stepper-step" :class="{ active: currentStep===3, done: currentStep>3 }">
+                <span class="stepper-circle">{{ currentStep>3 ? '✓' : '3' }}</span>
+                配置参数
+            </div>
+            <div class="stepper-line" :class="{ done: currentStep>3 }"></div>
+            <div class="stepper-step" :class="{ active: currentStep===4 }">
+                <span class="stepper-circle">4</span>
+                查看报告
+            </div>
+        </nav>
+
+        <!-- Step 1: Upload -->
+        <div class="step" id="step1">
+            <h3>步骤 1: 上传 Thrift 文件</h3>
+            <div class="drop-zone"
+                 :class="{ dragover: isDragging }"
+                 @click="$refs.fileInput.click()"
+                 @dragover.prevent="isDragging=true"
+                 @dragleave="isDragging=false"
+                 @drop.prevent="onDrop">
+                <div class="drop-zone-icon">📄</div>
+                <p style="margin:0.5rem 0 0;" v-if="!selectedFile">
+                    拖拽 <code>.thrift</code> 文件到此处，或点击选择文件
+                </p>
+                <p style="margin:0.5rem 0 0;" v-else>
+                    已选择: <strong>{{ selectedFile.name }}</strong>
+                </p>
+                <input type="file" ref="fileInput" accept=".thrift" @change="handleFileUpload" style="display:none;">
+            </div>
+            <button @click="uploadFile" :disabled="!selectedFile" style="margin-top:1rem;">
+                上传并解析
+            </button>
+            <div v-if="uploadError" class="error" style="margin-top:1rem; padding:1rem; background:var(--pico-del-background-color); border-left:4px solid var(--pico-del-color); border-radius:0.25rem;">
+                <pre style="margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:0.9rem;">{{ uploadError }}</pre>
+            </div>
+        </div>
+
+        <!-- Step 2: Select Interface -->
+        <div class="step" id="step2" :class="{ hidden: currentStep < 2 }">
+            <h3>步骤 2: 选择接口和配置连接</h3>
+
+            <label>
+                从 IDL 选择服务:
+                <select v-model="idlService" @change="onIdlServiceChange">
+                    <option value="">-- 选择 IDL 服务 --</option>
+                    <option v-for="service in services" :value="service.name">{{ service.name }}</option>
+                </select>
+                <small>先从此处选择 IDL 中的服务，以便下方显示方法列表</small>
+            </label>
+
+            <label>
+                实际服务名:
+                <input type="text" v-model="config.service" placeholder="例如: UserService">
+                <small>填写实际调用时使用的服务名（如有别名则填别名）</small>
+            </label>
+
+            <label>
+                选择方法:
+                <select v-model="config.method" @change="onMethodChange">
+                    <option value="">-- 请选择方法 --</option>
+                    <option v-for="method in currentMethods" :value="method.name">{{ method.name }}</option>
+                </select>
+            </label>
+
+            <!-- Return type info -->
+            <div v-if="selectedMethodInfo && selectedMethodInfo.returnType" style="background:var(--pico-card-background-color); padding:1rem; margin-bottom:1rem; border-radius:0.5rem;">
+                <h4 style="margin-top:0;">返回值结构说明</h4>
+                <table style="width:100%; font-size:0.9rem;">
+                    <tbody>
+                        <tr>
+                            <td style="width:30%; font-weight:bold;">返回类型</td>
+                            <td><code>{{ selectedMethodInfo.returnType }}</code></td>
+                        </tr>
+                        <tr v-if="selectedMethodInfo.returnFields && selectedMethodInfo.returnFields.length > 0">
+                            <td style="font-weight:bold;">字段详情</td>
+                            <td>
+                                <details style="margin:0;">
+                                    <summary style="cursor:pointer; color:var(--pico-primary);">
+                                        展开查看 {{ selectedMethodInfo.returnFields.length }} 个字段
+                                    </summary>
+                                    <table style="width:100%; margin-top:0.5rem; font-size:0.85rem;">
+                                        <thead><tr><th>字段名</th><th>类型</th><th>必填</th></tr></thead>
+                                        <tbody>
+                                            <tr v-for="field in selectedMethodInfo.returnFields" :key="field.name" style="border-bottom:1px solid var(--pico-muted-border-color);">
+                                                <td style="padding:0.25rem;"><code>{{ field.name }}</code></td>
+                                                <td style="padding:0.25rem;"><code style="color:var(--pico-muted-color);">{{ field.type }}</code></td>
+                                                <td style="padding:0.25rem;">
+                                                    <span v-if="field.required" style="color:var(--pico-del-color);">✓</span>
+                                                    <span v-else style="color:var(--pico-muted-color);">可选</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </details>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="inline-group">
+                <label>主机地址:<input type="text" v-model="config.host" placeholder="localhost"></label>
+                <label>端口:<input type="number" v-model.number="config.port" placeholder="8888"><small>demo-server 默认 8888</small></label>
+            </div>
+
+            <fieldset>
+                <legend>传输协议:</legend>
+                <label><input type="radio" v-model="config.protocol" value="framed"> Framed (默认)</label>
+                <label><input type="radio" v-model="config.protocol" value="binary"> Buffered</label>
+                <label><input type="radio" v-model="config.protocol" value="ttheader"> TTHeader</label>
+            </fieldset>
+
+            <button @click="nextStep" :disabled="!config.service || !config.method">下一步</button>
+        </div>
+
+        <!-- Step 3: Parameters & Config -->
+        <div class="step" id="step3" :class="{ hidden: currentStep < 3 }">
+            <h3>步骤 3: 填写参数和测试配置</h3>
+
+            <!-- Param structure hint -->
+            <div v-if="hasRealParams" style="background:var(--pico-card-background-color); padding:1rem; margin-bottom:1rem; border-radius:0.5rem;">
+                <h4 style="margin-top:0;">参数结构说明</h4>
+                <table style="width:100%; font-size:0.9rem;">
+                    <thead><tr><th>参数名</th><th>类型</th><th>必填</th><th>字段详情</th></tr></thead>
+                    <tbody>
+                        <tr v-for="param in realParams" :key="param.name">
+                            <td><code>{{ param.name }}</code></td>
+                            <td><code>{{ param.type }}</code></td>
+                            <td>
+                                <span v-if="param.required" style="color:var(--pico-del-color); font-weight:bold;">✓ 必填</span>
+                                <span v-else style="color:var(--pico-muted-color);">可选</span>
+                            </td>
+                            <td>
+                                <div v-if="param.structFields && param.structFields.length > 0" style="font-size:0.85rem;">
+                                    <details style="margin:0;">
+                                        <summary style="cursor:pointer; color:var(--pico-primary);">
+                                            展开查看 {{ param.structFields.length }} 个字段
+                                        </summary>
+                                        <table style="width:100%; margin-top:0.5rem; font-size:0.85rem;">
+                                            <tr v-for="field in param.structFields" :key="field.name" style="border-bottom:1px solid var(--pico-muted-border-color);">
+                                                <td style="padding:0.25rem; width:35%;"><code>{{ field.name }}</code></td>
+                                                <td style="padding:0.25rem; width:35%;"><code style="color:var(--pico-muted-color);">{{ field.type }}</code></td>
+                                                <td style="padding:0.25rem; width:30%;">
+                                                    <span v-if="field.required" style="color:var(--pico-del-color);">✓</span>
+                                                    <span v-else style="color:var(--pico-muted-color);">可选</span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </details>
+                                </div>
+                                <span v-else style="color:var(--pico-muted-color); font-size:0.85rem;">基础类型</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <small style="color:var(--pico-muted-color); margin-top:0.5rem; display:block;">根据上述参数结构填写 JSON 格式的值</small>
+            </div>
+            <div v-if="!hasRealParams" style="background:var(--pico-card-background-color); padding:1rem; margin-bottom:1rem; border-radius:0.5rem;">
+                <p style="margin:0; color:var(--pico-muted-color);">该方法无需参数，已自动设置为空对象 <code>{}</code></p>
+            </div>
+
+            <!-- JSON editor -->
+            <label>
+                请求参数 (JSON 格式):
+                <div class="json-toolbar" v-if="hasRealParams">
+                    <button @click="formatJson" class="secondary">格式化</button>
+                    <button @click="resetJson" class="secondary">重置</button>
+                </div>
+                <textarea
+                    v-model="config.params"
+                    rows="8"
+                    :placeholder="paramPlaceholder"
+                    :readonly="!hasRealParams"
+                    :class="{ 'json-invalid': jsonError }"
+                    :style="!hasRealParams ? 'background-color:var(--pico-form-element-disabled-background-color); cursor:not-allowed;' : ''"
+                    @input="validateJson">
+                </textarea>
+                <div v-if="jsonError" class="json-error">{{ jsonError }}</div>
+                <small v-else-if="hasRealParams">请输入符合 Thrift 接口定义的 JSON 参数</small>
+            </label>
+
+            <!-- Test mode -->
+            <fieldset>
+                <legend>测试模式:</legend>
+                <label><input type="radio" v-model="config.testMode" value="duration"> 基于持续时间</label>
+                <label><input type="radio" v-model="config.testMode" value="count"> 基于请求次数</label>
+            </fieldset>
+
+            <label>并发数:<input type="number" v-model.number="config.concurrency" placeholder="10" min="1"><small>同时发送请求的线程数</small></label>
+
+            <div v-if="config.testMode === 'duration'">
+                <label>持续时间 (秒):<input type="number" v-model.number="config.duration" placeholder="10" min="1"></label>
+            </div>
+            <div v-if="config.testMode === 'count'">
+                <label>总请求次数:<input type="number" v-model.number="config.totalCount" placeholder="1000" min="1"></label>
+            </div>
+
+            <button @click="runTest" :disabled="testing">{{ testing ? '测试中...' : '开始测试' }}</button>
+            <div v-if="testing" style="text-align:center; padding:1rem;">
+                <p aria-busy="true">正在执行性能测试，请稍候...</p>
+            </div>
+            <div v-if="testError" class="error" style="margin-top:1rem; padding:1rem; background:var(--pico-del-background-color); border-left:4px solid var(--pico-del-color); border-radius:0.25rem;">
+                <pre style="margin:0; white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:0.9rem;">{{ testError }}</pre>
+            </div>
+        </div>
+
+        <!-- Step 4: Report -->
+        <div class="step" id="step4" :class="{ hidden: currentStep < 4 }">
+            <h3>步骤 4: 测试报告</h3>
+
+            <!-- Running banner -->
+            <div v-if="testing" style="background:var(--pico-primary-background); padding:1rem; margin-bottom:1rem; border-radius:0.5rem; text-align:center;">
+                <p style="margin:0; font-weight:bold;">测试进行中，数据实时更新...</p>
+                <button @click="stopTest" class="secondary" style="margin-top:0.5rem;">停止测试</button>
+            </div>
+            <div v-if="!testing && report.total > 0" style="background:var(--pico-ins-background-color); padding:1rem; margin-bottom:1rem; border-radius:0.5rem; text-align:center;">
+                <p style="margin:0; font-weight:bold;">测试完成！</p>
+            </div>
+
+            <!-- Config summary -->
+            <div class="config-summary" v-if="report.total > 0">
+                <span>服务: <strong>{{ config.service }}</strong></span>
+                <span>方法: <strong>{{ config.method }}</strong></span>
+                <span>并发: <strong>{{ config.concurrency }}</strong></span>
+                <span v-if="config.testMode==='duration'">时长: <strong>{{ config.duration }}s</strong></span>
+                <span v-else>总次数: <strong>{{ config.totalCount }}</strong></span>
+                <span>协议: <strong>{{ config.protocol }}</strong></span>
+            </div>
+
+            <!-- Core metrics -->
+            <div class="core-metrics" v-if="report.total > 0">
+                <div class="metric-card qps">
+                    <div class="metric-value animated-num" :class="{ bump: numBump }">
+                        {{ report.qps ? report.qps.toFixed(1) : '0' }}
+                    </div>
+                    <div class="metric-label">QPS (每秒请求数)</div>
+                </div>
+                <div class="metric-card latency">
+                    <div class="metric-value animated-num" :class="{ bump: numBump }">
+                        {{ report.avgLatency ? report.avgLatency.toFixed(2) : '0' }}
+                        <span style="font-size:0.9rem; font-weight:400;">ms</span>
+                    </div>
+                    <div class="metric-label">平均延迟</div>
+                </div>
+                <div class="metric-card rate">
+                    <div class="rate-ring" :style="rateRingStyle">
+                        {{ report.successRate ? report.successRate.toFixed(0) : '0' }}%
+                    </div>
+                    <div class="metric-label">成功率</div>
+                </div>
+            </div>
+
+            <!-- Latency bar chart -->
+            <div class="latency-chart" v-if="report.total > 0">
+                <h4 style="margin:0 0 0.75rem;">延迟分布</h4>
+                <div class="latency-bar-row">
+                    <span class="latency-bar-label">P50</span>
+                    <div class="latency-bar-track">
+                        <div class="latency-bar-fill" :style="latencyBarStyle(report.p50, 0)" style="background:var(--pico-primary);"></div>
+                    </div>
+                    <span class="latency-bar-val">{{ report.p50 ? report.p50.toFixed(2) : '0' }} ms</span>
+                </div>
+                <div class="latency-bar-row">
+                    <span class="latency-bar-label">P95</span>
+                    <div class="latency-bar-track">
+                        <div class="latency-bar-fill" :style="latencyBarStyle(report.p95, 1)" style="background:#e65100;"></div>
+                    </div>
+                    <span class="latency-bar-val">{{ report.p95 ? report.p95.toFixed(2) : '0' }} ms</span>
+                </div>
+                <div class="latency-bar-row">
+                    <span class="latency-bar-label">P99</span>
+                    <div class="latency-bar-track">
+                        <div class="latency-bar-fill" :style="latencyBarStyle(report.p99, 2)" style="background:var(--pico-del-color);"></div>
+                    </div>
+                    <span class="latency-bar-val">{{ report.p99 ? report.p99.toFixed(2) : '0' }} ms</span>
+                </div>
+            </div>
+
+            <!-- Detailed report table -->
+            <details v-if="report.total > 0" style="margin-top:1rem;">
+                <summary style="cursor:pointer; font-weight:bold;">详细数据</summary>
+                <table class="report-table">
+                    <tbody>
+                        <tr><td>总请求数</td><td>{{ report.total }}</td></tr>
+                        <tr><td>成功数</td><td class="success">{{ report.success }}</td></tr>
+                        <tr><td>失败数</td><td class="error">{{ report.failed }}</td></tr>
+                        <tr><td>成功率</td><td>{{ report.successRate ? report.successRate.toFixed(2) : 0 }}%</td></tr>
+                        <tr><td>平均延迟</td><td>{{ report.avgLatency ? report.avgLatency.toFixed(2) : 0 }} ms</td></tr>
+                        <tr><td>P50 延迟</td><td>{{ report.p50 ? report.p50.toFixed(2) : 0 }} ms</td></tr>
+                        <tr><td>P95 延迟</td><td>{{ report.p95 ? report.p95.toFixed(2) : 0 }} ms</td></tr>
+                        <tr><td>P99 延迟</td><td>{{ report.p99 ? report.p99.toFixed(2) : 0 }} ms</td></tr>
+                        <tr><td>QPS</td><td>{{ report.qps ? report.qps.toFixed(2) : 0 }}</td></tr>
+                    </tbody>
+                </table>
+            </details>
+
+            <!-- Call logs -->
+            <details open style="margin-top:2rem; border:1px solid var(--pico-muted-border-color); padding:1rem; border-radius:0.5rem;">
+                <summary style="cursor:pointer; font-weight:bold;">
+                    调用详情 (共 {{ callLogs.length }} 条记录)
+                    <button @click.stop="downloadLogs" class="secondary" style="margin-left:1rem; font-size:0.9rem;">下载全部记录</button>
+                </summary>
+                <div v-if="callLogs.length === 0" style="text-align:center; padding:2rem; color:var(--pico-muted-color);">暂无调用记录</div>
+                <div v-else style="max-height:400px; overflow-y:auto; margin-top:1rem;">
+                    <table style="width:100%; font-size:0.85rem; table-layout:fixed;">
+                        <thead>
+                            <tr>
+                                <th style="width:60px;">序号</th>
+                                <th style="width:100px;">时间</th>
+                                <th style="width:60px;">状态</th>
+                                <th style="width:80px;">延迟</th>
+                                <th>结果</th>
+                                <th style="width:60px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="log in callLogs" :key="log.id" :class="{ 'success-row': log.success, 'error-row': !log.success }">
+                                <td>#{{ log.id }}</td>
+                                <td>{{ log.timestamp }}</td>
+                                <td>
+                                    <span v-if="log.success" class="success">✓</span>
+                                    <span v-else class="error">✗</span>
+                                </td>
+                                <td>{{ log.latency.toFixed(2) }} ms</td>
+                                <td class="log-result" :class="{ 'is-error': !log.success }"
+                                    :title="log.result" @click="showResultDetail(log)">
+                                    {{ summarizeResult(log) }}
+                                </td>
+                                <td><button @click="showResultDetail(log)" class="secondary" style="font-size:0.75rem; padding:0.25rem 0.5rem; margin:0;">查看</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+
+            <div style="margin-top:1rem;">
+                <button @click="reset">重新测试</button>
+                <button @click="exportReport('text')" class="secondary">导出文本报告</button>
+                <button @click="exportReport('json')" class="secondary">导出 JSON</button>
+            </div>
+        </div>
+
+        <!-- Modal -->
+        <div v-if="showDetailDialog" class="modal-overlay" @click="closeResultDetail">
+            <div class="modal-content" @click.stop>
+                <div class="modal-header">
+                    <h3>调用详情 #{{ selectedLog?.id }}</h3>
+                    <button @click="closeResultDetail" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body" v-if="selectedLog">
+                    <table class="detail-table">
+                        <tr><td class="label">时间</td><td>{{ selectedLog.timestamp }}</td></tr>
+                        <tr><td class="label">状态</td><td><span v-if="selectedLog.success" class="success">✓ 成功</span><span v-else class="error">✗ 失败</span></td></tr>
+                        <tr><td class="label">延迟</td><td>{{ selectedLog.latency?.toFixed(2) }} ms</td></tr>
+                    </table>
+                    <div class="result-section">
+                        <label>{{ selectedLog.success ? '返回结果' : '错误信息' }}:</label>
+                        <textarea readonly :value="selectedLog.result" rows="15" class="result-textarea"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button @click="copyResultToClipboard" class="secondary">复制结果</button>
+                    <button @click="closeResultDetail">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+    </div>
+</main>
+
+<script src="/vue.global.js"></script>
+<script>
+const { createApp } = Vue;
+
+createApp({
+    data() {
+        return {
+            currentStep: 1,
+            selectedFile: null,
+            services: [],
+            currentMethods: [],
+            idlService: '',
+            selectedMethodInfo: null,
+            uploadError: '',
+            testError: '',
+            testing: false,
+            callLogs: [],
+            showDetailDialog: false,
+            selectedLog: null,
+            isDragging: false,
+            jsonError: '',
+            lastJsonValid: '{}',
+            toastMsg: '',
+            numBump: false,
+            abortController: null,
+            config: {
+                service: '', method: '', host: 'localhost', port: 8888,
+                protocol: 'framed', params: '{}', concurrency: 10,
+                duration: 10, testMode: 'duration', totalCount: 1000
+            },
+            report: {}
+        };
+    },
+    computed: {
+        hasRealParams() {
+            if (!this.selectedMethodInfo?.params) return false;
+            return this.selectedMethodInfo.params.filter(p => p.name !== '_placeholder').length > 0;
+        },
+        realParams() {
+            if (!this.selectedMethodInfo?.params) return [];
+            return this.selectedMethodInfo.params.filter(p => p.name !== '_placeholder');
+        },
+        paramPlaceholder() {
+            if (!this.selectedMethodInfo?.params?.length) return '{}';
+            const ex = {};
+            this.selectedMethodInfo.params.forEach(p => { ex[p.name] = this.getExampleValue(p); });
+            return JSON.stringify(ex, null, 2);
+        },
+        rateRingStyle() {
+            const r = this.report.successRate || 0;
+            const color = r >= 95 ? 'var(--green)' : r >= 80 ? 'var(--yellow)' : 'var(--red)';
+            return `background: conic-gradient(${color} ${r * 3.6}deg, #e0e0e0 ${r * 3.6}deg)`;
+        }
+    },
+    watch: {
+        report: {
+            handler() {
+                this.numBump = true;
+                setTimeout(() => { this.numBump = false; }, 150);
+            },
+            deep: true
+        }
+    },
+    methods: {
+        /* --- File upload --- */
+        handleFileUpload(event) {
+            this.selectedFile = event.target.files[0];
+            this.uploadError = '';
+        },
+        onDrop(event) {
+            this.isDragging = false;
+            const file = event.dataTransfer.files[0];
+            if (file && file.name.endsWith('.thrift')) {
+                this.selectedFile = file;
+                this.uploadError = '';
+            } else {
+                this.uploadError = '请选择 .thrift 文件';
+            }
+        },
+        async uploadFile() {
+            if (!this.selectedFile) return;
+            const formData = new FormData();
+            formData.append('file', this.selectedFile);
+            try {
+                const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+                if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || '上传失败'); }
+                const data = await resp.json();
+                this.services = data.services || [];
+                this.currentStep = 2;
+                this.uploadError = '';
+            } catch (e) { this.uploadError = e.message; }
+        },
+
+        /* --- Interface selection --- */
+        onIdlServiceChange() {
+            const svc = this.services.find(s => s.name === this.idlService);
+            this.currentMethods = svc ? svc.methods : [];
+            if (!this.config.service) this.config.service = this.idlService;
+            this.config.method = '';
+            this.selectedMethodInfo = null;
+        },
+        onMethodChange() {
+            const method = this.currentMethods.find(m => m.name === this.config.method);
+            this.selectedMethodInfo = method;
+            const hasReal = method?.params.filter(p => p.name !== '_placeholder').length > 0;
+            if (!hasReal) {
+                this.config.params = '{}';
+            } else {
+                const ex = {};
+                method.params.forEach(p => { if (p.name !== '_placeholder') ex[p.name] = this.getExampleValue(p); });
+                this.config.params = JSON.stringify(ex, null, 2);
+                this.lastJsonValid = this.config.params;
+            }
+            this.jsonError = '';
+        },
+        nextStep() {
+            if (this.config.service && this.config.method) {
+                if (!this.selectedMethodInfo) {
+                    this.selectedMethodInfo = this.currentMethods.find(m => m.name === this.config.method);
+                }
+                this.currentStep = 3;
+            }
+        },
+
+        /* --- Example value generation --- */
+        getExampleValue(paramOrType) {
+            if (typeof paramOrType === 'object' && paramOrType.type) {
+                if (paramOrType.structFields?.length > 0) {
+                    const ex = {};
+                    paramOrType.structFields.forEach(f => { ex[f.name] = this.getExampleValueByType(f.type); });
+                    return ex;
+                }
+                return this.getExampleValueByType(paramOrType.type);
+            }
+            return this.getExampleValueByType(paramOrType);
+        },
+        getExampleValueByType(type) {
+            const t = type.toLowerCase();
+            if (t.includes('string')) return '';
+            if (t.includes('i32') || t.includes('i64') || t.includes('int')) return 0;
+            if (t.includes('bool')) return false;
+            if (t.includes('double') || t.includes('float')) return 0.0;
+            if (t.includes('list')) return [];
+            if (t.includes('map')) return {};
+            return '';
+        },
+
+        /* --- JSON editor --- */
+        formatJson() {
+            try {
+                const obj = JSON.parse(this.config.params);
+                this.config.params = JSON.stringify(obj, null, 2);
+                this.jsonError = '';
+                this.lastJsonValid = this.config.params;
+            } catch (e) {
+                this.jsonError = 'JSON 格式错误，无法格式化';
+            }
+        },
+        resetJson() {
+            this.onMethodChange(); // re-generates example
+        },
+        validateJson() {
+            try {
+                JSON.parse(this.config.params);
+                this.jsonError = '';
+                this.lastJsonValid = this.config.params;
+            } catch (e) {
+                this.jsonError = 'JSON 格式错误: ' + e.message.replace(/^JSON\.parse:\s*/, '');
+            }
+        },
+
+        /* --- Test execution --- */
+        async runTest() {
+            this.validateJson();
+            if (this.jsonError) { this.testError = '请修正 JSON 参数格式后再试'; return; }
+
+            this.testing = true;
+            this.testError = '';
+            this.report = {};
+            this.callLogs = [];
+            this.currentStep = 4;
+            this.abortController = new AbortController();
+
+            try {
+                const resp = await fetch('/api/test/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.config),
+                    signal: this.abortController.signal
+                });
+                if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || '测试失败'); }
+
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const eventMatch = line.match(/^event:\s*(.+)$/m);
+                        const dataMatch = line.match(/^data:\s*(.+)$/m);
+                        if (!dataMatch) continue;
+                        const data = JSON.parse(dataMatch[1]);
+                        if (eventMatch?.[1] === 'done') {
+                            this.report = data;
+                            this.testing = false;
+                        } else if (eventMatch?.[1] === 'log') {
+                            this.callLogs.push(data);
+                        } else {
+                            this.report = data;
+                        }
+                    }
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    this.testError = e.message;
+                }
+                this.testing = false;
+            }
+        },
+        stopTest() {
+            if (this.abortController) {
+                this.abortController.abort();
+                this.abortController = null;
+            }
+            this.testing = false;
+        },
+
+        /* --- Report display helpers --- */
+        latencyBarStyle(val, index) {
+            const maxVal = Math.max(this.report.p99 || 1, 1);
+            const pct = Math.min(((val || 0) / maxVal) * 100, 100);
+            return { width: pct + '%' };
+        },
+        summarizeResult(log) {
+            if (!log.success) {
+                // Show first line of error
+                const lines = (log.result || '').split('\n');
+                return lines[0].substring(0, 60);
+            }
+            // For success, try to show a short summary
+            const r = log.result || '';
+            if (r.length > 60) return r.substring(0, 57) + '...';
+            return r;
+        },
+
+        /* --- Reset --- */
+        reset() {
+            this.currentStep = 1;
+            this.selectedFile = null;
+            this.services = [];
+            this.currentMethods = [];
+            this.idlService = '';
+            this.uploadError = '';
+            this.testError = '';
+            this.callLogs = [];
+            this.jsonError = '';
+            this.config = {
+                service: '', method: '', host: 'localhost', port: 8888,
+                protocol: 'framed', params: '{}', concurrency: 10,
+                duration: 10, testMode: 'duration', totalCount: 1000
+            };
+            this.report = {};
+            const input = this.$refs?.fileInput;
+            if (input) input.value = '';
+        },
+
+        /* --- Export --- */
+        exportReport(format) {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            if (format === 'json') {
+                const data = { config: { ...this.config }, report: { ...this.report }, callLogs: this.callLogs.length };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `thrift-report-${ts}.json`; a.click();
+                URL.revokeObjectURL(url);
+            } else {
+                const txt = `Thrift 性能测试报告\n${'='.repeat(30)}\n\n服务: ${this.config.service}\n方法: ${this.config.method}\n主机: ${this.config.host}:${this.config.port}\n协议: ${this.config.protocol}\n并发数: ${this.config.concurrency}\n${this.config.testMode === 'duration' ? '持续时间: ' + this.config.duration + '秒' : '总次数: ' + this.config.totalCount}\n\n总请求数: ${this.report.total}\n成功数: ${this.report.success}\n失败数: ${this.report.failed}\n成功率: ${this.report.successRate?.toFixed(2) ?? 0}%\n平均延迟: ${this.report.avgLatency?.toFixed(2) ?? 0} ms\nP50: ${this.report.p50?.toFixed(2) ?? 0} ms\nP95: ${this.report.p95?.toFixed(2) ?? 0} ms\nP99: ${this.report.p99?.toFixed(2) ?? 0} ms\nQPS: ${this.report.qps?.toFixed(2) ?? 0}`;
+                const blob = new Blob([txt], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `thrift-report-${ts}.txt`; a.click();
+                URL.revokeObjectURL(url);
+            }
+            this.showToast('报告已导出');
+        },
+
+        /* --- Call logs download --- */
+        downloadLogs() {
+            if (!this.callLogs.length) { this.showToast('没有调用记录'); return; }
+            let csv = '序号,时间,状态,延迟(ms),结果\n';
+            this.callLogs.forEach(log => {
+                const status = log.success ? '成功' : '失败';
+                const result = (log.result || '').replace(/"/g, '""');
+                csv += `${log.id},${log.timestamp},${status},${log.latency.toFixed(2)},"${result}"\n`;
+            });
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `thrift-call-logs-${Date.now()}.csv`; a.click();
+            URL.revokeObjectURL(url);
+            this.showToast('CSV 已下载');
+        },
+
+        /* --- Modal --- */
+        showResultDetail(log) { this.selectedLog = log; this.showDetailDialog = true; },
+        closeResultDetail() { this.showDetailDialog = false; this.selectedLog = null; },
+        async copyResultToClipboard() {
+            if (!this.selectedLog) return;
+            try {
+                await navigator.clipboard.writeText(this.selectedLog.result);
+            } catch {
+                const ta = document.createElement('textarea');
+                ta.value = this.selectedLog.result;
+                document.body.appendChild(ta); ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            this.showToast('已复制到剪贴板');
+        },
+
+        /* --- Toast --- */
+        showToast(msg) {
+            this.toastMsg = msg;
+            setTimeout(() => { this.toastMsg = ''; }, 2000);
+        }
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
