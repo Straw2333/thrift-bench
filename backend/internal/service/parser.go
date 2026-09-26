@@ -12,19 +12,22 @@ import (
 // 预编译正则表达式（包级别，只编译一次）
 var (
 	// 移除注释
-	reLineComment   = regexp.MustCompile(`//.*`)
-	reBlockComment  = regexp.MustCompile(`/\*[\s\S]*?\*/`)
-	reShellComment  = regexp.MustCompile(`#.*`)
+	reLineComment  = regexp.MustCompile(`//.*`)
+	reBlockComment = regexp.MustCompile(`/\*[\s\S]*?\*/`)
+	reShellComment = regexp.MustCompile(`#.*`)
 
-	// 修复无参数函数
-	reEmptyArgs = regexp.MustCompile(`(\w+\s+\w+)\s*\(\s*\)`)
+	// 类型模式：基础类型或容器类型（支持一层嵌套，如 map<string, list<i32>>）
+	reTypePattern = `(?:\w+\s*<[^<>]*(?:<[^<>]*>)?[^<>]*>|\w+)`
+
+	// 修复无参数函数：给空参数列表补一个占位参数（Kitex 拒绝解析无参数的方法）
+	reEmptyArgs = regexp.MustCompile(`(` + reTypePattern + `)\s+(\w+)\s*\(\s*\)`)
 
 	// 解析 service/struct/method/param/field
 	reServiceDef = regexp.MustCompile(`service\s+(\w+)\s*{([^}]*)}`)
 	reStructDef  = regexp.MustCompile(`struct\s+(\w+)\s*\{([^}]*)\}`)
-	reMethodDef  = regexp.MustCompile(`(\w+)\s+(\w+)\s*\(([^)]*)\)`)
-	reParamDef   = regexp.MustCompile(`\d+:\s*((?:required|optional)\s+)?(\w+)\s+(\w+)`)
-	reFieldDef   = regexp.MustCompile(`(\d+):\s*((?:optional|required)\s+)?(\w+)\s+(\w+)`)
+	reMethodDef  = regexp.MustCompile(`(` + reTypePattern + `)\s+(\w+)\s*\(([^)]*)\)`)
+	reParamDef   = regexp.MustCompile(`\d+\s*:\s*((?:required|optional)\s+)?(` + reTypePattern + `)\s+(\w+)`)
+	reFieldDef   = regexp.MustCompile(`(\d+)\s*:\s*((?:optional|required)\s+)?(` + reTypePattern + `)\s+(\w+)`)
 )
 
 // ThriftParser Thrift IDL 解析器
@@ -46,8 +49,8 @@ func (p *ThriftParser) ParseIDL(idlPath string) (*model.IDLInfo, error) {
 		return nil, fmt.Errorf("读取 IDL 文件失败: %w", err)
 	}
 
-	// 修复无参数函数（为 Kitex 兼容性）
-	fixedContent := reEmptyArgs.ReplaceAllString(string(content), "$1(1: optional string _placeholder)")
+	// 修复无参数函数（Kitex 解析器会拒绝空参数列表的方法）
+	fixedContent := reEmptyArgs.ReplaceAllString(string(content), "$1 $2(1: optional string _placeholder)")
 
 	// 保存修复后的文件（用于 Kitex）
 	fixedPath := idlPath + ".fixed"

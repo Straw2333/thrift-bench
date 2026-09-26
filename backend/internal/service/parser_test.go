@@ -212,3 +212,62 @@ func TestParseIDL_NoService(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "未找到任何 service 定义")
 }
+
+func TestParseIDL_ContainerTypes(t *testing.T) {
+	dir := t.TempDir()
+	idlPath := filepath.Join(dir, "container.thrift")
+	content := `namespace go example
+
+struct Tags {
+    1: map<string, string> labels,
+    2: list<i32> scores,
+    3: map<string, list<i64>> index,
+    4: optional set<string> names,
+    5: i64 plain
+}
+
+struct QueryResult {
+    1: map<string, Tags> groups
+}
+
+service TagService {
+    QueryResult query(1: map<string, string> filters, 2: list<i32> ids)
+    map<string, string> simple(1: Tags tags)
+}`
+	err := os.WriteFile(idlPath, []byte(content), 0644)
+	assert.NoError(t, err)
+
+	p := NewThriftParser()
+	info, err := p.ParseIDL(idlPath)
+	assert.NoError(t, err)
+	assert.Len(t, info.Services, 1)
+
+	methods := info.Services[0].Methods
+	assert.Len(t, methods, 2)
+
+	// query 方法：容器类型参数应完整解析
+	q := methods[0]
+	assert.Equal(t, "query", q.Name)
+	assert.Len(t, q.Params, 2)
+	assert.Equal(t, "map<string, string>", q.Params[0].Type)
+	assert.Equal(t, "filters", q.Params[0].Name)
+	assert.Equal(t, "list<i32>", q.Params[1].Type)
+	// 返回类型与字段
+	assert.Equal(t, "QueryResult", q.ReturnType)
+	assert.NotEmpty(t, q.ReturnFields)
+
+	// simple 方法：容器返回类型 + struct 参数
+	s := methods[1]
+	assert.Equal(t, "simple", s.Name)
+	assert.Equal(t, "map<string, string>", s.ReturnType)
+	assert.Equal(t, "Tags", s.Params[0].Type)
+
+	// struct 字段中的容器类型
+	tags := info.Structs["Tags"]
+	assert.Len(t, tags.Fields, 5)
+	assert.Equal(t, "map<string, string>", tags.Fields[0].Type)
+	assert.Equal(t, "list<i32>", tags.Fields[1].Type)
+	assert.Equal(t, "map<string, list<i64>>", tags.Fields[2].Type)
+	assert.Equal(t, "set<string>", tags.Fields[3].Type)
+	assert.False(t, tags.Fields[3].Required)
+}

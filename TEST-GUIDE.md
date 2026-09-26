@@ -10,8 +10,8 @@
 
 ### ⚠️ 测试工具
 - **状态**: 需要手动启动
-- **端口**: 8080
-- **界面**: http://localhost:8080
+- **端口**: 11064
+- **界面**: http://localhost:11064
 
 ---
 
@@ -28,12 +28,12 @@ thrift-perf-tool.exe
 
 等待看到：
 ```
-服务已启动，访问地址: http://localhost:8080
+服务已启动，访问地址: http://localhost:11064
 ```
 
 ### 步骤 2: 打开浏览器
 
-访问：**http://localhost:8080**
+访问：**http://localhost:11064**
 
 ### 步骤 3: 测试 GetUser 方法
 
@@ -166,7 +166,7 @@ QPS:         ~100
 
 **错误**: `bind: Only one usage of each socket address...`
 
-**原因**: 8080 端口被占用
+**原因**: 11064 端口被占用
 
 **解决**:
 ```bash
@@ -208,8 +208,8 @@ demo-server.exe
 在提交测试报告前，请确认：
 
 - [ ] 服务端成功启动（看到 "server listen at addr=[::]:8888"）
-- [ ] 测试工具成功启动（看到 "服务已启动，访问地址: http://localhost:8080"）
-- [ ] 浏览器能访问 http://localhost:8080
+- [ ] 测试工具成功启动（看到 "服务已启动，访问地址: http://localhost:11064"）
+- [ ] 浏览器能访问 http://localhost:11064
 - [ ] 成功上传并解析 Thrift 文件
 - [ ] 看到参数结构说明表格
 - [ ] GetUser 方法测试成功（成功率 > 99%）

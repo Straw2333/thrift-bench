@@ -43,3 +43,15 @@ func TestParsePort_BoundaryHigh(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 65535, p)
 }
+
+func TestParsePort_TrailingGarbage(t *testing.T) {
+	// 旧实现用 Sscanf，"8080abc" 会被错误地接受为 8080
+	_, err := parsePort("8080abc")
+	assert.Error(t, err)
+}
+
+func TestParsePort_Whitespace(t *testing.T) {
+	p, err := parsePort(" 8888 ")
+	assert.NoError(t, err)
+	assert.Equal(t, 8888, p)
+}

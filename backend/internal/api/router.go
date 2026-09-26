@@ -16,8 +16,8 @@ func SetupRouter(handler *Handler, webFS embed.FS) *gin.Engine {
 	// API 路由组
 	api := r.Group("/api")
 	{
-		api.POST("/upload", handler.UploadIDL)         // 上传 IDL 文件
-		api.POST("/test", handler.RunTest)             // 执行测试（一次性返回）
+		api.POST("/upload", handler.UploadIDL)          // 上传 IDL 文件
+		api.POST("/test", handler.RunTest)              // 执行测试（一次性返回）
 		api.POST("/test/stream", handler.RunTestStream) // 执行测试（SSE 流式返回）
 	}
 

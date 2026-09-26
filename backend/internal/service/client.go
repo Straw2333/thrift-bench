@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"strings"
 	"thrift-perf-tool/internal/model"
+	"time"
 
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/generic"
 	"github.com/cloudwego/kitex/transport"
 )
+
+// defaultRequestTimeoutMs 未显式配置超时时，单次请求的默认超时时间
+const defaultRequestTimeoutMs = 5000
 
 // ThriftClient Thrift 客户端管理器
 type ThriftClient struct {
@@ -40,11 +44,33 @@ func NewThriftClient(config *model.TestConfig) (*ThriftClient, error) {
 		getProtocolOption(config.Protocol),
 	}
 
+	// 单次请求超时：防止服务端挂起导致测试永久阻塞
+	timeoutMs := config.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = defaultRequestTimeoutMs
+	}
+	opts = append(opts,
+		client.WithRPCTimeout(time.Duration(timeoutMs)*time.Millisecond),
+		client.WithConnectTimeout(3*time.Second),
+	)
+
 	// 创建泛化客户端
 	cli, err := genericclient.NewClient(config.Service, g, opts...)
 	if err != nil {
 		provider.Close() // 创建客户端失败时释放 provider
 		return nil, fmt.Errorf("创建泛化客户端失败: %w", err)
+	}
+
+	// 在测试开始前规范化并校验参数（方法不存在、JSON 非法、键不匹配都会在此报错）
+	field, err := loadRequestField(config.IDLPath, config.Method)
+	if err != nil {
+		provider.Close()
+		return nil, err
+	}
+	config.Params, err = NormalizeParams(config.Params, field, config.Method)
+	if err != nil {
+		provider.Close()
+		return nil, err
 	}
 
 	return &ThriftClient{

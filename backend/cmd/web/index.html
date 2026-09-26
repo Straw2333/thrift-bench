@@ -410,7 +410,7 @@
                     @input="validateJson">
                 </textarea>
                 <div v-if="jsonError" class="json-error">{{ jsonError }}</div>
-                <small v-else-if="hasRealParams">请输入符合 Thrift 接口定义的 JSON 参数</small>
+                <small v-else-if="hasRealParams">直接填写参数字段的 JSON（无需按参数名包装），字段名需与 IDL 一致</small>
             </label>
 
             <!-- Test mode -->
@@ -421,6 +421,8 @@
             </fieldset>
 
             <label>并发数:<input type="number" v-model.number="config.concurrency" placeholder="10" min="1"><small>同时发送请求的线程数</small></label>
+
+            <label>单次请求超时 (毫秒):<input type="number" v-model.number="config.timeoutMs" placeholder="5000" min="1"><small>单个请求超过该时间未响应将按失败处理</small></label>
 
             <div v-if="config.testMode === 'duration'">
                 <label>持续时间 (秒):<input type="number" v-model.number="config.duration" placeholder="10" min="1"></label>
@@ -458,6 +460,7 @@
                 <span>并发: <strong>{{ config.concurrency }}</strong></span>
                 <span v-if="config.testMode==='duration'">时长: <strong>{{ config.duration }}s</strong></span>
                 <span v-else>总次数: <strong>{{ config.totalCount }}</strong></span>
+                <span>单次超时: <strong>{{ config.timeoutMs }}ms</strong></span>
                 <span>协议: <strong>{{ config.protocol }}</strong></span>
             </div>
 
@@ -524,6 +527,7 @@
                         <tr><td>P95 延迟</td><td>{{ report.p95 ? report.p95.toFixed(2) : 0 }} ms</td></tr>
                         <tr><td>P99 延迟</td><td>{{ report.p99 ? report.p99.toFixed(2) : 0 }} ms</td></tr>
                         <tr><td>QPS</td><td>{{ report.qps ? report.qps.toFixed(2) : 0 }}</td></tr>
+                        <tr v-if="report.errorSample"><td class="error">首个错误</td><td class="error" style="white-space:pre-wrap; word-break:break-all;">{{ report.errorSample }}</td></tr>
                     </tbody>
                 </table>
             </details>
@@ -531,7 +535,7 @@
             <!-- Call logs -->
             <details open style="margin-top:2rem; border:1px solid var(--pico-muted-border-color); padding:1rem; border-radius:0.5rem;">
                 <summary style="cursor:pointer; font-weight:bold;">
-                    调用详情 (共 {{ callLogs.length }} 条记录)
+                    调用详情 ({{ callLogs.length }} 条记录{{ logsCapped ? '，已截断，仅保留最近 500 条；全部请求仍计入统计' : '' }})
                     <button @click.stop="downloadLogs" class="secondary" style="margin-left:1rem; font-size:0.9rem;">下载全部记录</button>
                 </summary>
                 <div v-if="callLogs.length === 0" style="text-align:center; padding:2rem; color:var(--pico-muted-color);">暂无调用记录</div>
@@ -629,10 +633,12 @@ createApp({
             toastMsg: '',
             numBump: false,
             abortController: null,
+            logsCapped: false,
             config: {
                 service: '', method: '', host: 'localhost', port: 8888,
                 protocol: 'framed', params: '{}', concurrency: 10,
-                duration: 10, testMode: 'duration', totalCount: 1000
+                duration: 10, testMode: 'duration', totalCount: 1000,
+                timeoutMs: 5000
             },
             report: {}
         };
@@ -647,10 +653,7 @@ createApp({
             return this.selectedMethodInfo.params.filter(p => p.name !== '_placeholder');
         },
         paramPlaceholder() {
-            if (!this.selectedMethodInfo?.params?.length) return '{}';
-            const ex = {};
-            this.selectedMethodInfo.params.forEach(p => { ex[p.name] = this.getExampleValue(p); });
-            return JSON.stringify(ex, null, 2);
+            return this.buildParamsTemplate(this.selectedMethodInfo);
         },
         rateRingStyle() {
             const r = this.report.successRate || 0;
@@ -712,9 +715,7 @@ createApp({
             if (!hasReal) {
                 this.config.params = '{}';
             } else {
-                const ex = {};
-                method.params.forEach(p => { if (p.name !== '_placeholder') ex[p.name] = this.getExampleValue(p); });
-                this.config.params = JSON.stringify(ex, null, 2);
+                this.config.params = this.buildParamsTemplate(method);
                 this.lastJsonValid = this.config.params;
             }
             this.jsonError = '';
@@ -728,17 +729,23 @@ createApp({
             }
         },
 
-        /* --- Example value generation --- */
-        getExampleValue(paramOrType) {
-            if (typeof paramOrType === 'object' && paramOrType.type) {
-                if (paramOrType.structFields?.length > 0) {
-                    const ex = {};
-                    paramOrType.structFields.forEach(f => { ex[f.name] = this.getExampleValueByType(f.type); });
-                    return ex;
-                }
-                return this.getExampleValueByType(paramOrType.type);
-            }
-            return this.getExampleValueByType(paramOrType);
+        /* --- Params template ---
+         * Kitex 泛化调用期望"扁平"的 JSON：键直接是请求字段名。
+         * - 单个 struct 参数：直接写该 struct 的字段（{"userId": 0}）
+         * - 多个参数：键为参数名（{"token": "", "device": ""}）
+         * - 单个标量参数：直接填裸值（"" / 0 / false）
+         * 按参数名包装的旧写法（{"req": {...}}）会导致字段值被静默丢弃。
+         */
+        buildParamsTemplate(method) {
+            const params = (method?.params || []).filter(p => p.name !== '_placeholder');
+            const exampleOf = p => p.structFields?.length > 0
+                ? Object.fromEntries(p.structFields.map(f => [f.name, this.getExampleValueByType(f.type)]))
+                : this.getExampleValueByType(p.type);
+            if (params.length === 0) return '{}';
+            if (params.length === 1) return JSON.stringify(exampleOf(params[0]), null, 2);
+            const obj = {};
+            params.forEach(p => { obj[p.name] = exampleOf(p); });
+            return JSON.stringify(obj, null, 2);
         },
         getExampleValueByType(type) {
             const t = type.toLowerCase();
@@ -784,6 +791,7 @@ createApp({
             this.testError = '';
             this.report = {};
             this.callLogs = [];
+            this.logsCapped = false;
             this.currentStep = 4;
             this.abortController = new AbortController();
 
@@ -794,7 +802,11 @@ createApp({
                     body: JSON.stringify(this.config),
                     signal: this.abortController.signal
                 });
-                if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || '测试失败'); }
+                if (!resp.ok) {
+                    let msg = '测试失败 (HTTP ' + resp.status + ')';
+                    try { const e = await resp.json(); if (e.error) msg = e.error; } catch { /* 非 JSON 响应时保留默认提示 */ }
+                    throw new Error(msg);
+                }
 
                 const reader = resp.body.getReader();
                 const decoder = new TextDecoder('utf-8');
@@ -817,6 +829,10 @@ createApp({
                             this.testing = false;
                         } else if (eventMatch?.[1] === 'log') {
                             this.callLogs.push(data);
+                            if (this.callLogs.length > 500) {
+                                this.callLogs.shift();
+                                this.logsCapped = true;
+                            }
                         } else {
                             this.report = data;
                         }
@@ -865,11 +881,13 @@ createApp({
             this.uploadError = '';
             this.testError = '';
             this.callLogs = [];
+            this.logsCapped = false;
             this.jsonError = '';
             this.config = {
                 service: '', method: '', host: 'localhost', port: 8888,
                 protocol: 'framed', params: '{}', concurrency: 10,
-                duration: 10, testMode: 'duration', totalCount: 1000
+                duration: 10, testMode: 'duration', totalCount: 1000,
+                timeoutMs: 5000
             };
             this.report = {};
             const input = this.$refs?.fileInput;
@@ -887,7 +905,7 @@ createApp({
                 a.href = url; a.download = `thrift-report-${ts}.json`; a.click();
                 URL.revokeObjectURL(url);
             } else {
-                const txt = `Thrift 性能测试报告\n${'='.repeat(30)}\n\n服务: ${this.config.service}\n方法: ${this.config.method}\n主机: ${this.config.host}:${this.config.port}\n协议: ${this.config.protocol}\n并发数: ${this.config.concurrency}\n${this.config.testMode === 'duration' ? '持续时间: ' + this.config.duration + '秒' : '总次数: ' + this.config.totalCount}\n\n总请求数: ${this.report.total}\n成功数: ${this.report.success}\n失败数: ${this.report.failed}\n成功率: ${this.report.successRate?.toFixed(2) ?? 0}%\n平均延迟: ${this.report.avgLatency?.toFixed(2) ?? 0} ms\nP50: ${this.report.p50?.toFixed(2) ?? 0} ms\nP95: ${this.report.p95?.toFixed(2) ?? 0} ms\nP99: ${this.report.p99?.toFixed(2) ?? 0} ms\nQPS: ${this.report.qps?.toFixed(2) ?? 0}`;
+                const txt = `Thrift 性能测试报告\n${'='.repeat(30)}\n\n服务: ${this.config.service}\n方法: ${this.config.method}\n主机: ${this.config.host}:${this.config.port}\n协议: ${this.config.protocol}\n并发数: ${this.config.concurrency}\n${this.config.testMode === 'duration' ? '持续时间: ' + this.config.duration + '秒' : '总次数: ' + this.config.totalCount}\n\n总请求数: ${this.report.total}\n成功数: ${this.report.success}\n失败数: ${this.report.failed}\n成功率: ${this.report.successRate?.toFixed(2) ?? 0}%\n平均延迟: ${this.report.avgLatency?.toFixed(2) ?? 0} ms\nP50: ${this.report.p50?.toFixed(2) ?? 0} ms\nP95: ${this.report.p95?.toFixed(2) ?? 0} ms\nP99: ${this.report.p99?.toFixed(2) ?? 0} ms\nQPS: ${this.report.qps?.toFixed(2) ?? 0}${this.report.errorSample ? '\n\n首个错误: ' + this.report.errorSample : ''}`;
                 const blob = new Blob([txt], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');

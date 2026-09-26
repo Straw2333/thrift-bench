@@ -5,7 +5,7 @@
 ## 功能特性
 
 ✅ **动态解析** - 上传 `.thrift` 文件自动解析接口和参数
-✅ **多协议支持** - 支持 Binary、Compact、JSON 三种 Thrift 协议
+✅ **多传输协议** - 支持 Framed、Buffered、TTHeader 三种 Thrift 传输协议
 ✅ **高并发测试** - 基于 Go 协程的高性能并发引擎
 ✅ **实时报告** - 自动生成测试报告，包含 QPS、延迟分布、成功率等指标
 ✅ **极简界面** - 单页应用，无需复杂配置，4 步完成测试
@@ -46,7 +46,7 @@ chmod +x thrift-perf-tool
 程序启动后，在浏览器中打开：
 
 ```
-http://localhost:8080
+http://localhost:11064
 ```
 
 ### 3. 开始测试
@@ -120,11 +120,12 @@ service UserService {
 
 ```json
 {
-    "req": {
-        "userId": 123
-    }
+    "userId": 123
 }
 ```
+
+> 注意：Kitex 泛化调用要求**扁平**的 JSON 格式——单参数方法直接写请求 struct 的字段，
+> 不要按参数名包装（`{"req": {...}}` 的旧写法会导致字段值被静默丢弃）。
 
 ### 示例测试配置
 
@@ -133,7 +134,7 @@ service UserService {
 方法: getUser
 主机: localhost
 端口: 9090
-协议: Binary
+协议: Framed
 并发数: 10
 持续时间: 10
 ```
@@ -236,11 +237,11 @@ cd ..
 
 ### 4. 如何修改监听端口？
 
-目前默认端口为 `8080`，如需修改：
+目前默认端口为 `11064`，如需修改：
 
-1. 编辑 `backend/cmd/main.go`
-2. 修改 `port := ":8080"` 为你需要的端口
-3. 重新编译项目
+1. 启动时加参数：`./thrift-perf-tool -port 9000`（或设置环境变量 `PORT`）
+2. 或编辑 `backend/cmd/main.go` 中的默认值后重新编译
+3. 加 `-no-browser` 参数可禁止自动打开浏览器
 
 ## 性能建议
 

@@ -88,7 +88,6 @@ func (m *MetricsCollector) generateReport() *model.TestReport {
 	for i := range latencyBounds {
 		bucketCounts[i] = m.buckets[i].Load()
 	}
-	overCount := m.totalOver.Load()
 
 	// 计算成功率
 	successRate := float64(success) / float64(total) * 100
@@ -98,9 +97,9 @@ func (m *MetricsCollector) generateReport() *model.TestReport {
 	avgLatency := float64(totalLatNs) / float64(total) / 1e6 // 转毫秒
 
 	// 计算百分位延迟
-	p50 := m.percentile(bucketCounts, overCount, total, 0.50)
-	p95 := m.percentile(bucketCounts, overCount, total, 0.95)
-	p99 := m.percentile(bucketCounts, overCount, total, 0.99)
+	p50 := m.percentile(bucketCounts, total, 0.50)
+	p95 := m.percentile(bucketCounts, total, 0.95)
+	p99 := m.percentile(bucketCounts, total, 0.99)
 
 	// 计算 QPS
 	duration := time.Since(m.startTime).Seconds()
@@ -121,7 +120,7 @@ func (m *MetricsCollector) generateReport() *model.TestReport {
 
 // percentile 从直方图桶计算百分位延迟（毫秒）
 // 返回满足 >= p 比例请求的延迟桶上界
-func (m *MetricsCollector) percentile(bucketCounts []int64, overCount int64, total int64, p float64) float64 {
+func (m *MetricsCollector) percentile(bucketCounts []int64, total int64, p float64) float64 {
 	if total == 0 {
 		return 0
 	}

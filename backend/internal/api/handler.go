@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"thrift-perf-tool/internal/model"
 	"thrift-perf-tool/internal/service"
 
@@ -22,12 +24,21 @@ func defaultUploadDir() string {
 	return filepath.Join(filepath.Dir(exePath), "uploads")
 }
 
+// validProtocols 支持的传输协议
+var validProtocols = map[string]struct{}{
+	"framed":   {},
+	"binary":   {},
+	"ttheader": {},
+}
+
 // Handler API 处理器
 type Handler struct {
-	parser      *service.ThriftParser
+	mu     sync.Mutex // 保护 currentIDL / currentInfo
+	parser *service.ThriftParser
+
 	uploadDir   string
-	currentIDL  string          // 当前上传的 IDL 文件路径（修复后）
-	currentInfo *model.IDLInfo  // 当前解析的 IDL 信息
+	currentIDL  string         // 当前上传的 IDL 文件路径（修复后）
+	currentInfo *model.IDLInfo // 当前解析的 IDL 信息
 }
 
 // NewHandler 创建新的处理器
@@ -110,12 +121,27 @@ func (h *Handler) UploadIDL(c *gin.Context) {
 		return
 	}
 
-	// 保存解析结果和修复后的 IDL 路径
+	// 记录本次解析结果，并清理上一次上传留下的文件
+	h.mu.Lock()
+	oldIDL := h.currentIDL
 	h.currentIDL = idlInfo.FixedIDLPath
 	h.currentInfo = idlInfo
+	h.mu.Unlock()
+	removeUploadedIDL(oldIDL, idlInfo.FixedIDLPath)
 
 	// 返回解析结果
 	c.JSON(http.StatusOK, idlInfo)
+}
+
+// removeUploadedIDL 删除旧的 IDL 上传文件（原始文件与修复文件）。
+// 忽略删除失败的情况——残留文件不影响功能。
+func removeUploadedIDL(oldFixed, newFixed string) {
+	if oldFixed == "" || oldFixed == newFixed {
+		return
+	}
+	original := strings.TrimSuffix(oldFixed, ".fixed")
+	os.Remove(oldFixed)
+	os.Remove(original)
 }
 
 // RunTest 执行性能测试
@@ -125,8 +151,8 @@ func (h *Handler) RunTest(c *gin.Context) {
 		return // 错误已在 createTestEngine 中写入响应
 	}
 
-	// 执行测试
-	report := engine.Run()
+	// 执行测试（请求上下文取消时测试随之终止）
+	report := engine.Run(c.Request.Context())
 
 	// 返回测试报告
 	c.JSON(http.StatusOK, report)
@@ -145,39 +171,41 @@ func (h *Handler) RunTestStream(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // 禁用 nginx 缓冲
 
-	// 创建进度回调函数,用于推送聚合统计数据(每秒)
+	// SSE 写入必须串行化：日志回调来自多个 worker goroutine，
+	// 进度快照来自独立的 ticker goroutine，并发写会破坏 HTTP 分帧
+	var writeMu sync.Mutex
+	writeEvent := func(event string, payload interface{}) {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return
+		}
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		if event != "" {
+			// SSE 格式: event: log\ndata: {json}\n\n
+			fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event, data)
+		} else {
+			// SSE 格式: data: {json}\n\n
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+		}
+		c.Writer.Flush()
+	}
+
+	// 进度回调：推送聚合统计数据(每秒)
 	progressCallback := func(report *model.TestReport) {
-		data, err := json.Marshal(report)
-		if err != nil {
-			return
-		}
-		// SSE 格式: data: {json}\n\n
-		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-		c.Writer.Flush()
+		writeEvent("", report)
 	}
 
-	// 创建日志回调函数,用于推送每次调用的详细记录
+	// 日志回调：推送单次调用的详细记录
 	logCallback := func(log *model.CallLog) {
-		data, err := json.Marshal(log)
-		if err != nil {
-			return
-		}
-		// SSE 格式: event: log\ndata: {json}\n\n
-		fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", data)
-		c.Writer.Flush()
+		writeEvent("log", log)
 	}
 
-	// 执行测试,定期推送进度和日志
-	finalReport := engine.RunWithCallback(progressCallback, logCallback)
+	// 执行测试,定期推送进度和日志；客户端断开（如点击"停止测试"）时测试终止
+	finalReport := engine.RunWithCallback(c.Request.Context(), progressCallback, logCallback)
 
 	// 发送最终报告（使用 event: done 标识）
-	finalData, err := json.Marshal(finalReport)
-	if err != nil {
-		fmt.Fprintf(c.Writer, "event: done\ndata: {\"error\":\"序列化报告失败\"}\n\n")
-	} else {
-		fmt.Fprintf(c.Writer, "event: done\ndata: %s\n\n", finalData)
-	}
-	c.Writer.Flush()
+	writeEvent("done", finalReport)
 }
 
 // createTestEngine 解析请求、验证配置并创建测试引擎
@@ -189,7 +217,9 @@ func (h *Handler) createTestEngine(c *gin.Context) (*service.TestEngine, error) 
 		return nil, err
 	}
 
+	h.mu.Lock()
 	config.IDLPath = h.currentIDL
+	h.mu.Unlock()
 	if config.IDLPath == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请先上传 IDL 文件"})
 		return nil, fmt.Errorf("IDL not uploaded")
@@ -200,13 +230,54 @@ func (h *Handler) createTestEngine(c *gin.Context) (*service.TestEngine, error) 
 		return nil, err
 	}
 
+	if err := h.validateMethodParams(config.Method); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return nil, err
+	}
+
 	engine, err := service.NewTestEngine(&config)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建测试引擎失败: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "创建测试引擎失败: " + err.Error()})
 		return nil, err
 	}
 
 	return engine, nil
+}
+
+// validateMethodParams 拒绝多参数方法。
+// Kitex 泛化调用仅支持单参数方法：多参数方法的参数值无法被正确传递
+// （首个参数会被写成整段 JSON 文本，其余参数为默认值），必须提前拦截。
+func (h *Handler) validateMethodParams(method string) error {
+	h.mu.Lock()
+	info := h.currentInfo
+	h.mu.Unlock()
+	if info == nil {
+		return nil
+	}
+	for _, svc := range info.Services {
+		for _, m := range svc.Methods {
+			if m.Name != method {
+				continue
+			}
+			if len(m.Params) <= 1 {
+				return nil
+			}
+			names := make([]string, 0, len(m.Params))
+			for _, p := range m.Params {
+				names = append(names, p.Name)
+			}
+			return fmt.Errorf(`❌ 无法测试方法 %q：它声明了 %d 个参数（%s）。
+
+【原因】
+Kitex 泛化调用仅支持单参数方法（通常是"一个请求 struct"的写法），
+多参数方法的参数值无法被正确传递到服务端。
+
+【解决方法】
+1. 选择其他单参数方法进行测试
+2. 或调整 IDL：将多个参数封装为一个请求 struct`, method, len(m.Params), strings.Join(names, ", "))
+		}
+	}
+	return nil
 }
 
 // validateConfig 验证测试配置
@@ -250,9 +321,32 @@ demo-server 默认端口为 8888`, config.Port)
 【要求】
 并发数必须大于 0`, config.Concurrency)
 	}
+	if _, ok := validProtocols[config.Protocol]; config.Protocol != "" && !ok {
+		return fmt.Errorf(`❌ 配置错误：传输协议无效
+
+【当前值】
+%s
+
+【有效值】
+framed, binary, ttheader`, config.Protocol)
+	}
+	if config.TimeoutMs == 0 {
+		// 未配置时使用默认超时
+		config.TimeoutMs = 5000
+	}
+	if config.TimeoutMs <= 0 || config.TimeoutMs > 600000 {
+		return fmt.Errorf(`❌ 配置错误：单次请求超时无效
+
+【当前值】
+%d 毫秒
+
+【有效范围】
+1-600000 毫秒`, config.TimeoutMs)
+	}
 
 	// 根据测试模式验证不同参数
-	if config.TestMode == "duration" {
+	switch config.TestMode {
+	case "duration":
 		if config.Duration <= 0 {
 			return fmt.Errorf(`❌ 配置错误：持续时间无效
 
@@ -262,7 +356,7 @@ demo-server 默认端口为 8888`, config.Port)
 【要求】
 持续时间必须大于 0`, config.Duration)
 		}
-	} else if config.TestMode == "count" {
+	case "count":
 		if config.TotalCount <= 0 {
 			return fmt.Errorf(`❌ 配置错误：总请求次数无效
 
@@ -272,6 +366,14 @@ demo-server 默认端口为 8888`, config.Port)
 【要求】
 总请求次数必须大于 0`, config.TotalCount)
 		}
+	default:
+		return fmt.Errorf(`❌ 配置错误：测试模式无效
+
+【当前值】
+%s
+
+【有效值】
+duration（基于持续时间）或 count（基于请求次数）`, config.TestMode)
 	}
 
 	return nil

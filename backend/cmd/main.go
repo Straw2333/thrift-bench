@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"thrift-perf-tool/internal/api"
 	"time"
 )
@@ -18,6 +20,7 @@ var webFS embed.FS
 func main() {
 	// 命令行参数
 	port := flag.Int("port", 0, "服务监听端口 (默认 11064，也可通过环境变量 PORT 设置)")
+	noBrowser := flag.Bool("no-browser", false, "启动后不自动打开浏览器")
 	flag.Parse()
 
 	// 优先级：命令行参数 > 环境变量 > 默认值
@@ -52,14 +55,16 @@ func main() {
 	fmt.Println()
 
 	// 延迟一小段时间后自动打开浏览器
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		if err := openBrowser(url); err != nil {
-			log.Printf("自动打开浏览器失败: %v (请手动访问 %s)\n", err, url)
-		} else {
-			fmt.Println("已自动打开浏览器")
-		}
-	}()
+	if !*noBrowser {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			if err := openBrowser(url); err != nil {
+				log.Printf("自动打开浏览器失败: %v (请手动访问 %s)\n", err, url)
+			} else {
+				fmt.Println("已自动打开浏览器")
+			}
+		}()
+	}
 
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("启动服务失败: %v", err)
@@ -68,8 +73,8 @@ func main() {
 
 // parsePort 解析端口号字符串
 func parsePort(s string) (int, error) {
-	var p int
-	if _, err := fmt.Sscanf(s, "%d", &p); err != nil || p < 1 || p > 65535 {
+	p, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || p < 1 || p > 65535 {
 		return 0, fmt.Errorf("端口号必须在 1-65535 范围内")
 	}
 	return p, nil

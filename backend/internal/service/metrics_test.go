@@ -93,7 +93,7 @@ func TestPercentile_SingleBucket(t *testing.T) {
 	// 所有请求落入第一个桶 (0.1ms)
 	bucketCounts := make([]int64, len(latencyBounds))
 	bucketCounts[0] = 10
-	result := m.percentile(bucketCounts, 0, 10, 0.5)
+	result := m.percentile(bucketCounts, 10, 0.5)
 	assert.Equal(t, latencyBounds[0], result)
 }
 
@@ -101,10 +101,10 @@ func TestPercentile_P50(t *testing.T) {
 	m := NewMetricsCollector()
 	// 10 个请求：5 个在 1ms 桶，5 个在 100ms 桶
 	bucketCounts := make([]int64, len(latencyBounds))
-	bucketCounts[3] = 5  // 1ms 桶
-	bucketCounts[9] = 5  // 100ms 桶
+	bucketCounts[3] = 5 // 1ms 桶
+	bucketCounts[9] = 5 // 100ms 桶
 
-	result := m.percentile(bucketCounts, 0, 10, 0.5)
+	result := m.percentile(bucketCounts, 10, 0.5)
 	assert.Equal(t, latencyBounds[3], result) // P50 = 1ms
 }
 
@@ -112,14 +112,14 @@ func TestPercentile_OverBucket(t *testing.T) {
 	m := NewMetricsCollector()
 	// 所有请求超过最大桶边界
 	bucketCounts := make([]int64, len(latencyBounds))
-	result := m.percentile(bucketCounts, 10, 10, 0.5)
+	result := m.percentile(bucketCounts, 10, 0.5)
 	assert.Equal(t, latencyBounds[len(latencyBounds)-1], result)
 }
 
 func TestPercentile_ZeroTotal(t *testing.T) {
 	m := NewMetricsCollector()
 	bucketCounts := make([]int64, len(latencyBounds))
-	result := m.percentile(bucketCounts, 0, 0, 0.5)
+	result := m.percentile(bucketCounts, 0, 0.5)
 	assert.Equal(t, 0.0, result)
 }
 
