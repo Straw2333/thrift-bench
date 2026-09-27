@@ -7,20 +7,20 @@ all: build
 build:
 	@echo "开始编译项目..."
 	cd backend && go mod tidy
-	cd backend && go build -o ../thrift-perf-tool.exe ./cmd/main.go
-	@echo "编译完成！可执行文件: thrift-perf-tool.exe"
+	cd backend && go build -o ../thrift-bench.exe ./cmd/main.go
+	@echo "编译完成！可执行文件: thrift-bench.exe"
 
 # 构建 Linux 版本
 build-linux:
 	@echo "开始编译 Linux 版本..."
-	cd backend && GOOS=linux GOARCH=amd64 go build -o ../thrift-perf-tool-linux ./cmd/main.go
-	@echo "编译完成！可执行文件: thrift-perf-tool-linux"
+	cd backend && GOOS=linux GOARCH=amd64 go build -o ../thrift-bench-linux ./cmd/main.go
+	@echo "编译完成！可执行文件: thrift-bench-linux"
 
 # 构建 macOS 版本
 build-mac:
 	@echo "开始编译 macOS 版本..."
-	cd backend && GOOS=darwin GOARCH=amd64 go build -o ../thrift-perf-tool-mac ./cmd/main.go
-	@echo "编译完成！可执行文件: thrift-perf-tool-mac"
+	cd backend && GOOS=darwin GOARCH=amd64 go build -o ../thrift-bench-mac ./cmd/main.go
+	@echo "编译完成！可执行文件: thrift-bench-mac"
 
 # 构建所有平台
 build-all: build build-linux build-mac
@@ -29,12 +29,12 @@ build-all: build build-linux build-mac
 # 运行项目
 run: build
 	@echo "启动服务..."
-	./thrift-perf-tool.exe
+	./thrift-bench.exe
 
 # 清理编译文件
 clean:
 	@echo "清理编译文件..."
-	rm -f thrift-perf-tool.exe thrift-perf-tool-linux thrift-perf-tool-mac
+	rm -f thrift-bench.exe thrift-bench-linux thrift-bench-mac
 	rm -rf uploads/
 	@echo "清理完成！"
 

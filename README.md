@@ -25,20 +25,20 @@
 
 ```bash
 # 双击运行
-thrift-perf-tool.exe
+thrift-bench.exe
 
 # 或命令行运行
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 ```
 
 #### Linux / macOS
 
 ```bash
 # 首次运行需要添加执行权限
-chmod +x thrift-perf-tool
+chmod +x thrift-bench
 
 # 运行
-./thrift-perf-tool
+./thrift-bench
 ```
 
 ### 2. 访问 Web 界面
@@ -142,7 +142,7 @@ service UserService {
 ## 项目结构
 
 ```
-thrift-perf-tool/
+thrift-bench/
 ├── backend/                    # Go 后端
 │   ├── cmd/
 │   │   └── main.go            # 程序入口
@@ -161,7 +161,7 @@ thrift-perf-tool/
 │   └── go.sum
 ├── web/
 │   └── index.html             # 前端界面（单文件）
-├── thrift-perf-tool.exe       # 编译后的可执行文件
+├── thrift-bench.exe       # 编译后的可执行文件
 └── README.md                  # 本文档
 ```
 
@@ -179,7 +179,7 @@ thrift-perf-tool/
 ```bash
 # 1. 克隆项目（如果是从 Git 仓库）
 # git clone <repository-url>
-# cd thrift-perf-tool
+# cd thrift-bench
 
 # 2. 进入后端目录
 cd backend
@@ -189,20 +189,20 @@ go mod tidy
 
 # 4. 编译项目
 # Windows
-go build -o ../thrift-perf-tool.exe ./cmd/main.go
+go build -o ../thrift-bench.exe ./cmd/main.go
 
 # Linux / macOS
-go build -o ../thrift-perf-tool ./cmd/main.go
+go build -o ../thrift-bench ./cmd/main.go
 
 # 5. 返回项目根目录
 cd ..
 
 # 6. 运行程序
 # Windows
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 
 # Linux / macOS
-./thrift-perf-tool
+./thrift-bench
 ```
 
 ## 支持的 Thrift 协议
@@ -239,7 +239,7 @@ cd ..
 
 目前默认端口为 `11064`，如需修改：
 
-1. 启动时加参数：`./thrift-perf-tool -port 9000`（或设置环境变量 `PORT`）
+1. 启动时加参数：`./thrift-bench -port 9000`（或设置环境变量 `PORT`）
 2. 或编辑 `backend/cmd/main.go` 中的默认值后重新编译
 3. 加 `-no-browser` 参数可禁止自动打开浏览器
 

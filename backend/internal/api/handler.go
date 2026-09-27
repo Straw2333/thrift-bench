@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"thrift-perf-tool/internal/model"
-	"thrift-perf-tool/internal/service"
+	"thrift-bench/internal/model"
+	"thrift-bench/internal/service"
 
 	"github.com/gin-gonic/gin"
 )

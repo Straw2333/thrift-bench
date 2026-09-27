@@ -2,7 +2,7 @@
 
 ## 1. 启动工具（一键启动）
 
-**双击运行 `thrift-perf-tool.exe`**，程序会自动：
+**双击运行 `thrift-bench.exe`**，程序会自动：
 
 1. ✅ 启动 HTTP 服务（端口 11064）
 2. ✅ 自动打开默认浏览器
@@ -11,7 +11,7 @@
 **或者**在命令行执行：
 
 ```bash
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 ```
 
 启动成功后会看到：
@@ -30,7 +30,7 @@
 **注意**：
 - 浏览器会自动打开 http://localhost:11064
 - 控制台窗口会保持打开，显示实时日志
-- 只需要一个 `thrift-perf-tool.exe` 文件即可运行，无需其他依赖
+- 只需要一个 `thrift-bench.exe` 文件即可运行，无需其他依赖
 
 ## 2. Web 界面（自动打开）
 
@@ -221,7 +221,7 @@ QPS:         100
 
 ## 9. 下次使用
 
-直接运行 `thrift-perf-tool.exe` 即可，无需重新配置。
+直接运行 `thrift-bench.exe` 即可，无需重新配置。
 
 ## 10. 进阶使用
 
@@ -237,7 +237,7 @@ port := ":11064"  // 改为你需要的端口，如 ":9000"
 
 ```bash
 cd backend
-go build -o ../thrift-perf-tool.exe ./cmd/main.go
+go build -o ../thrift-bench.exe ./cmd/main.go
 ```
 
 ### 跨平台部署

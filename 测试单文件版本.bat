@@ -6,18 +6,18 @@ echo ==========================================
 echo.
 
 echo [1/4] 检查可执行文件是否存在...
-if exist thrift-perf-tool.exe (
-    echo     ✓ thrift-perf-tool.exe 存在
+if exist thrift-bench.exe (
+    echo     ✓ thrift-bench.exe 存在
 ) else (
-    echo     ✗ thrift-perf-tool.exe 不存在
-    echo     请先编译: cd backend ^&^& go build -o ..\thrift-perf-tool.exe .\cmd\main.go
+    echo     ✗ thrift-bench.exe 不存在
+    echo     请先编译: cd backend ^&^& go build -o ..\thrift-bench.exe .\cmd\main.go
     pause
     exit /b 1
 )
 
 echo.
 echo [2/4] 检查文件大小...
-for %%A in (thrift-perf-tool.exe) do (
+for %%A in (thrift-bench.exe) do (
     set size=%%~zA
 )
 echo     文件大小: %size% 字节
@@ -30,7 +30,7 @@ if %size% GTR 10000000 (
 echo.
 echo [3/4] 启动测试工具...
 echo     正在后台启动服务...
-start /B thrift-perf-tool.exe
+start /B thrift-bench.exe
 
 echo     等待服务启动 (3秒)...
 timeout /t 3 /nobreak >nul
@@ -50,5 +50,5 @@ echo.
 echo 按任意键停止服务并退出...
 pause >nul
 
-taskkill /F /IM thrift-perf-tool.exe >nul 2>&1
+taskkill /F /IM thrift-bench.exe >nul 2>&1
 echo 服务已停止。

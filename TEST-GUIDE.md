@@ -23,7 +23,7 @@
 
 ```bash
 cd c:\Users\Admin\Desktop\tool
-thrift-perf-tool.exe
+thrift-bench.exe
 ```
 
 等待看到：
@@ -171,10 +171,10 @@ QPS:         ~100
 **解决**:
 ```bash
 # 停止之前的进程
-taskkill /F /IM thrift-perf-tool.exe
+taskkill /F /IM thrift-bench.exe
 
 # 重新启动
-thrift-perf-tool.exe
+thrift-bench.exe
 ```
 
 ### 问题 2: 连接服务端失败
@@ -225,7 +225,7 @@ demo-server.exe
 测试时间: 2025-10-23
 测试环境: Windows / 本地
 服务端版本: demo-server.exe
-测试工具版本: thrift-perf-tool.exe
+测试工具版本: thrift-bench.exe
 
 测试 1: GetUser 方法
 - 并发数: 10

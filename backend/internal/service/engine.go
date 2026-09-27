@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"thrift-perf-tool/internal/model"
+	"thrift-bench/internal/model"
 	"time"
 )
 

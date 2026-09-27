@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"thrift-perf-tool/internal/model"
+	"thrift-bench/internal/model"
 )
 
 // 预编译正则表达式（包级别，只编译一次）

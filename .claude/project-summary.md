@@ -41,7 +41,7 @@
 ## 项目结构
 
 ```
-thrift-perf-tool/
+thrift-bench/
 ├── backend/                         # Go 后端源码
 │   ├── cmd/
 │   │   └── main.go                 # 程序入口
@@ -62,7 +62,7 @@ thrift-perf-tool/
 │   └── index.html                  # 前端界面（单文件，Vue 3 + Pico.css）
 ├── examples/
 │   └── example.thrift              # 示例 Thrift 文件
-├── thrift-perf-tool.exe            # 编译后的可执行文件（Windows）
+├── thrift-bench.exe            # 编译后的可执行文件（Windows）
 ├── Makefile                        # 构建脚本
 ├── README.md                       # 项目文档
 ├── QUICKSTART.md                   # 快速入门指南
@@ -205,7 +205,7 @@ wg.Wait()
 ### 1. 启动服务
 
 ```bash
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 ```
 
 ### 2. 访问界面
@@ -262,7 +262,7 @@ wg.Wait()
 
 ## 交付清单
 
-- ✅ 可执行文件：`thrift-perf-tool.exe`
+- ✅ 可执行文件：`thrift-bench.exe`
 - ✅ 源代码：`backend/` 和 `web/`
 - ✅ 示例文件：`examples/example.thrift`
 - ✅ 文档：

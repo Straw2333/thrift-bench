@@ -1,4 +1,4 @@
-module thrift-perf-tool
+module thrift-bench
 
 go 1.23.0
 

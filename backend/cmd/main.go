@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"thrift-perf-tool/internal/api"
+	"thrift-bench/internal/api"
 	"time"
 )
 

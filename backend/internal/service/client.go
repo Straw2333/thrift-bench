@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"thrift-perf-tool/internal/model"
+	"thrift-bench/internal/model"
 	"time"
 
 	"github.com/cloudwego/kitex/client"

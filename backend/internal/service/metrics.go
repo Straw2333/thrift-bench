@@ -2,7 +2,7 @@ package service
 
 import (
 	"sync/atomic"
-	"thrift-perf-tool/internal/model"
+	"thrift-bench/internal/model"
 	"time"
 )
 

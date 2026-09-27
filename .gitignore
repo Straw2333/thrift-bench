@@ -1,9 +1,9 @@
 # Binaries
 *.exe
 *.exe~
-thrift-perf-tool
-thrift-perf-tool-linux
-thrift-perf-tool-mac
+thrift-bench
+thrift-bench-linux
+thrift-bench-mac
 
 # Uploads & temp files
 uploads/

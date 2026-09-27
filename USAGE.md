@@ -5,7 +5,7 @@
 ```
 ┌──────────────────┐         ┌──────────────────┐
 │  测试工具（客户端） │         │  Thrift 服务端     │
-│  thrift-perf-tool │ ──────→│  demo-server      │
+│  thrift-bench │ ──────→│  demo-server      │
 │  localhost:11064   │   请求  │  localhost:8888   │
 └──────────────────┘         └──────────────────┘
 ```
@@ -39,7 +39,7 @@ cd demo-server
 **打开新的命令行窗口**，运行：
 
 ```bash
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 ```
 
 看到以下输出表示测试工具启动成功：

@@ -96,7 +96,7 @@ go build -o demo-server.exe
 
 ```bash
 cd ..
-.\thrift-perf-tool.exe
+.\thrift-bench.exe
 ```
 
 ### 步骤 3：在浏览器中测试

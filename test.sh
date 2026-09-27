@@ -21,7 +21,7 @@ echo "步骤 2: 检查测试工具状态..."
 if nc -z localhost 8080 2>/dev/null; then
     echo "✅ 测试工具正在运行 (端口 8080)"
 else
-    echo "❌ 测试工具未运行，请先启动: ./thrift-perf-tool.exe"
+    echo "❌ 测试工具未运行，请先启动: ./thrift-bench.exe"
     exit 1
 fi
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"thrift-perf-tool/internal/model"
+	"thrift-bench/internal/model"
 )
 
 func TestValidateConfig_MissingService(t *testing.T) {
